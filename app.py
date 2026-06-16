@@ -52,6 +52,7 @@ if uploaded:
         st.code(
             result.stdout
         )
+        st.code(result.stderr)
         import os
 
         if "TIMING PASS" in result.stdout:
