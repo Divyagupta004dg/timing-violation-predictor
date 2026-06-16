@@ -57,8 +57,8 @@ if uploaded:
         if "TIMING PASS" in result.stdout:
             st.success("✅ TIMING PASS")
 
-        if "TIMING FAIL" in result.stdout:
-            st.error("❌ TIMING FAIL")
+        if "TIMING VIOLATED" in result.stdout:
+            st.error("❌ TIMING VIOLATED")
 
         st.subheader("Model Visualizations")
 
