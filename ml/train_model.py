@@ -101,3 +101,9 @@ for design_name in df['design'].unique():
             print(f"{design_name:>16} | {delay:>11.1f} | {safe:>14.1f} ns")
 
 print("\nAll done!")
+import joblib
+
+joblib.dump(rf, "ml/rf_model.pkl")
+joblib.dump(xgb, "ml/xgb_model.pkl")
+
+print("Models saved successfully")
