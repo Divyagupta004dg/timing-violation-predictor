@@ -28,15 +28,15 @@ print("Models ready.\n")
 
 # ── Get user inputs ───────────────────────────────────────
 if len(sys.argv) < 4:
-    print("Usage: python3 predict_user_design.py <file.v> <top_module> <clock_period_ns>")
-    print("Example: python3 predict_user_design.py my_design.v my_alu 8.0")
+    print("Usage: python3 predict_user_design.py <file.v> <top_module> <clock_ns> [input_delay] [output_delay]")
+    print("Example: python3 predict_user_design.py my_design.v my_alu 8.0 0.5 0.5")
     sys.exit(1)
 
 verilog_file  = sys.argv[1]
 top_module    = sys.argv[2]
 clock_period  = float(sys.argv[3])
-input_delay   = round(clock_period * 0.1, 2)  # 10% of clock period
-output_delay  = input_delay
+input_delay   = float(sys.argv[4]) if len(sys.argv) > 4 else round(clock_period * 0.1, 2)
+output_delay  = float(sys.argv[5]) if len(sys.argv) > 5 else input_delay
 
 if not os.path.exists(verilog_file):
     print(f"ERROR: File not found: {verilog_file}")
@@ -141,15 +141,14 @@ print(f"    XGBoost        : {'VIOLATED' if xgb_pred else 'PASS'} (violation pro
 print("\n[4/4] Finding minimum safe clock period...")
 
 safe_clock = None
-for clk in np.arange(0.5, 20.0, 0.5):
-    # Run quick STA for this clock
+for clk in np.arange(0.5, 20.0, 1.0):
     sta_q = f"""
 read_liberty {LIB}
 read_verilog {netlist_file}
 link_design {top_module}
 create_clock -name clk -period {clk} [get_ports clk]
-set_input_delay {round(clk*0.1,2)} -clock clk [all_inputs]
-set_output_delay {round(clk*0.1,2)} -clock clk [all_outputs]
+set_input_delay {input_delay} -clock clk [all_inputs]
+set_output_delay {output_delay} -clock clk [all_outputs]
 report_wns
 exit
 """
@@ -190,3 +189,53 @@ else:
         print(f"  SUGGESTION    : Design too slow for tested range.")
 
 print("="*45)
+# ── Generate design-specific WNS vs Clock plot ───────────
+print("\nGenerating design-specific timing plot...")
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+sweep_clocks = []
+sweep_wns = []
+
+for clk in np.arange(0.5, 15.0, 0.5):
+    sta_q = f"""
+read_liberty {LIB}
+read_verilog {netlist_file}
+link_design {top_module}
+create_clock -name clk -period {clk} [get_ports clk]
+set_input_delay {input_delay} -clock clk [all_inputs]
+set_output_delay {output_delay} -clock clk [all_outputs]
+report_wns
+exit
+"""
+    with open('/tmp/sweep_temp.tcl', 'w') as f:
+        f.write(sta_q)
+    r = subprocess.run(['sta', '/tmp/sweep_temp.tcl'], capture_output=True, text=True)
+    w = 0.0
+    for line in r.stdout.splitlines():
+        if line.startswith('wns'):
+            try: w = float(line.split()[2])
+            except: pass
+    sweep_clocks.append(clk)
+    sweep_wns.append(w)
+
+plt.figure(figsize=(9, 5))
+display_vals = [w if w < 0 else 0.3 for w in sweep_wns]  # PASS ko visible height do
+colors = ['red' if w < 0 else 'green' for w in sweep_wns]
+plt.bar(sweep_clocks, display_vals, color=colors, width=0.4, alpha=0.8)
+plt.axhline(y=0, color='black', linestyle='--', linewidth=1)
+plt.xlabel('Clock Period (ns)')
+plt.ylabel('WNS (ns) — green bars show PASS region')
+plt.title(f'Timing Sweep — {top_module}\n(Red = Violation, Green = Pass)')
+plt.grid(axis='y', alpha=0.3)
+
+# Annotate actual values
+for clk, w in zip(sweep_clocks, sweep_wns):
+    label = f'{w:.2f}' if w < 0 else 'PASS'
+    y_pos = w if w < 0 else 0.32
+    plt.text(clk, y_pos, label, ha='center', fontsize=7, rotation=90)
+
+plt.tight_layout()
+plt.savefig(f'ml/live_{top_module}_sweep.png', dpi=150)
+print(f"Saved: ml/live_{top_module}_sweep.png")

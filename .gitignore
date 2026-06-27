@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 temp.v
 /tmp/
+temp.v
+reports/*.log
+reports/synth_*_temp.log
+reports/*.log
+reports/*.log
+reports/user_*_netlist.v
+reports/synth_*_temp.log
+*.save
